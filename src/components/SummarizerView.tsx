@@ -1,0 +1,559 @@
+import React, { useState } from 'react';
+import {
+  FileText,
+  FileSearch,
+  Sparkles,
+  Download,
+  CheckCircle,
+  AlertCircle,
+  Loader2,
+  Trash2,
+  Bookmark,
+  Share2,
+  ArrowRight,
+  Target,
+  FlaskConical,
+  Award,
+  AlertTriangle,
+  Lightbulb,
+} from 'lucide-react';
+import { useResearch } from '../context/ResearchContext.tsx';
+import { downloadAsPdf, downloadAsText } from '../lib/pdfExport.ts';
+import type { Paper, PaperSummary, PaperAbstract, ActiveTab } from '../types/index.ts';
+
+interface SummarizerViewProps {
+  initialPaperId?: string;
+  initialMode?: 'summary' | 'abstract';
+  setActiveTab: (tab: ActiveTab) => void;
+}
+
+export const SummarizerView: React.FC<SummarizerViewProps> = ({
+  initialPaperId,
+  initialMode = 'summary',
+  setActiveTab,
+}) => {
+  const {
+    papers,
+    summaries,
+    abstracts,
+    saveSummary,
+    deleteSummary,
+    saveAbstract,
+    deleteAbstract,
+  } = useResearch();
+
+  const [selectedPaperId, setSelectedPaperId] = useState<string>(
+    initialPaperId || (papers.length > 0 ? papers[0].id : '')
+  );
+  const [mode, setMode] = useState<'summary' | 'abstract'>(initialMode);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Active generated results
+  const [activeSummary, setActiveSummary] = useState<PaperSummary | null>(null);
+  const [activeAbstract, setActiveAbstract] = useState<PaperAbstract | null>(null);
+
+  const selectedPaper = papers.find((p) => p.id === selectedPaperId) || papers[0];
+
+  const handleGenerateSummary = async () => {
+    if (!selectedPaper) {
+      setError('Please select or upload a paper first.');
+      return;
+    }
+
+    try {
+      setError(null);
+      setIsLoading(true);
+
+      const response = await fetch('/api/summarize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: selectedPaper.title,
+          authors: selectedPaper.authors,
+          year: selectedPaper.year,
+          text: selectedPaper.extractedText,
+        }),
+      });
+
+      if (!response.ok) {
+        const errJson = await response.json();
+        throw new Error(errJson.error || 'Failed to generate summary.');
+      }
+
+      const data = await response.json();
+
+      const saved = await saveSummary({
+        paperId: selectedPaper.id,
+        paperTitle: selectedPaper.title,
+        objectives: data.objectives || '',
+        methodology: data.methodology || '',
+        keyFindings: data.keyFindings || '',
+        limitations: data.limitations || '',
+        conclusions: data.conclusions || '',
+        fullSummaryText: data.fullSummaryText || '',
+      });
+
+      setActiveSummary(saved);
+    } catch (err: any) {
+      console.error('Summary error:', err);
+      setError(err?.message || 'Error communicating with AI service.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGenerateAbstract = async () => {
+    if (!selectedPaper) {
+      setError('Please select or upload a paper first.');
+      return;
+    }
+
+    try {
+      setError(null);
+      setIsLoading(true);
+
+      const response = await fetch('/api/generate-abstract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: selectedPaper.title,
+          text: selectedPaper.extractedText,
+        }),
+      });
+
+      if (!response.ok) {
+        const errJson = await response.json();
+        throw new Error(errJson.error || 'Failed to generate abstract.');
+      }
+
+      const data = await response.json();
+
+      const saved = await saveAbstract({
+        paperId: selectedPaper.id,
+        paperTitle: selectedPaper.title,
+        generatedAbstract: data.generatedAbstract || '',
+        keywords: data.keywords || '',
+      });
+
+      setActiveAbstract(saved);
+    } catch (err: any) {
+      console.error('Abstract generation error:', err);
+      setError(err?.message || 'Error generating abstract.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleExportSummaryPdf = (item: PaperSummary) => {
+    downloadAsPdf(
+      item.paperTitle,
+      'Structured Academic Paper Summary',
+      [
+        { heading: '1. Research Objectives & Hypotheses', body: item.objectives },
+        { heading: '2. Research Methodology & Setup', body: item.methodology },
+        { heading: '3. Key Findings & Empirical Results', body: item.keyFindings },
+        { heading: '4. Methodological Limitations & Constraints', body: item.limitations },
+        { heading: '5. Conclusions & Scientific Impact', body: item.conclusions },
+        { heading: '6. Full Comprehensive Synthesis', body: item.fullSummaryText },
+      ],
+      `summary_${item.paperTitle.slice(0, 25).toLowerCase().replace(/[^a-z0-9]+/g, '_')}.pdf`
+    );
+  };
+
+  const handleExportSummaryTxt = (item: PaperSummary) => {
+    const content = `# Summary: ${item.paperTitle}
+Generated by Aura Research
+
+## 1. Research Objectives
+${item.objectives}
+
+## 2. Methodology
+${item.methodology}
+
+## 3. Key Findings
+${item.keyFindings}
+
+## 4. Limitations
+${item.limitations}
+
+## 5. Conclusions
+${item.conclusions}
+
+## Full Comprehensive Synthesis
+${item.fullSummaryText}
+`;
+    downloadAsText(
+      `summary_${item.paperTitle.slice(0, 25).toLowerCase().replace(/[^a-z0-9]+/g, '_')}.txt`,
+      content
+    );
+  };
+
+  const handleExportAbstractPdf = (item: PaperAbstract) => {
+    downloadAsPdf(
+      item.paperTitle,
+      'Generated Academic Abstract',
+      [
+        { heading: 'Academic Abstract', body: item.generatedAbstract },
+        { heading: 'Keywords', body: item.keywords },
+      ],
+      `abstract_${item.paperTitle.slice(0, 25).toLowerCase().replace(/[^a-z0-9]+/g, '_')}.pdf`
+    );
+  };
+
+  const currentPaperSummaries = summaries.filter((s) => s.paperId === selectedPaper?.id);
+  const currentPaperAbstracts = abstracts.filter((a) => a.paperId === selectedPaper?.id);
+
+  if (papers.length === 0) {
+    return (
+      <div className="max-w-3xl mx-auto bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-4">
+        <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
+          <FileText className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-900 font-serif">
+          No Papers Available to Summarize
+        </h2>
+        <p className="text-xs text-slate-500 max-w-md mx-auto">
+          Upload a paper PDF first or load a sample benchmark paper to generate structured summaries and abstracts.
+        </p>
+        <button
+          onClick={() => setActiveTab('upload')}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl shadow-xs"
+        >
+          Go to Upload Papers
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-8">
+      {/* Top Header & Paper Selector */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 font-serif">
+            Paper Summarizer & Abstract Generator
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            Generate objective academic summaries or publication-grade abstracts strictly grounded in the paper content.
+          </p>
+        </div>
+
+        {/* Paper Selector Dropdown */}
+        <div className="w-full md:w-80">
+          <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+            Active Research Paper:
+          </label>
+          <select
+            value={selectedPaperId}
+            onChange={(e) => {
+              setSelectedPaperId(e.target.value);
+              setActiveSummary(null);
+              setActiveAbstract(null);
+            }}
+            className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 shadow-2xs focus:ring-2 focus:ring-blue-500 focus:outline-none truncate"
+          >
+            {papers.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.title} ({p.pageCount} pages)
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Mode Tabs */}
+      <div className="flex items-center space-x-2 border-b border-slate-200 pb-2">
+        <button
+          onClick={() => setMode('summary')}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+            mode === 'summary'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>Paper Summarizer (5 Dimensions)</span>
+        </button>
+
+        <button
+          onClick={() => setMode('abstract')}
+          className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all ${
+            mode === 'abstract'
+              ? 'bg-blue-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          <FileSearch className="w-4 h-4" />
+          <span>Abstract Generator (150-250 Words)</span>
+        </button>
+      </div>
+
+      {/* Action Banner */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
+        <div className="space-y-1">
+          <div className="flex items-center space-x-2">
+            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-blue-50 text-blue-700">
+              {selectedPaper?.pageCount} Pages Parsed
+            </span>
+            <span className="text-xs text-slate-400">
+              {selectedPaper?.authors || 'Academic Paper'}
+            </span>
+          </div>
+          <h3 className="text-base font-bold text-slate-900 line-clamp-1 font-serif">
+            {selectedPaper?.title}
+          </h3>
+          <p className="text-xs text-slate-500">
+            {mode === 'summary'
+              ? 'Extracts objectives, methodology, key findings, limitations, and conclusions.'
+              : 'Synthesizes background, methods, results, significance, and academic keywords.'}
+          </p>
+        </div>
+
+        <button
+          disabled={isLoading}
+          onClick={mode === 'summary' ? handleGenerateSummary : handleGenerateAbstract}
+          className="inline-flex items-center justify-center space-x-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-xs transition-all shrink-0"
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Analyzing with Gemini...</span>
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-4 h-4 text-blue-200" />
+              <span>
+                {mode === 'summary' ? 'Generate Structured Summary' : 'Generate Academic Abstract'}
+              </span>
+            </>
+          )}
+        </button>
+      </div>
+
+      {error && (
+        <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl flex items-center space-x-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* DISPLAY SUMMARY RESULT */}
+      {mode === 'summary' && (
+        <>
+          {(activeSummary || currentPaperSummaries[0]) ? (
+            (() => {
+              const displayItem = activeSummary || currentPaperSummaries[0];
+              return (
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+                  {/* Card Header */}
+                  <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50">
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200/50">
+                          Structured Academic Breakdown
+                        </span>
+                        <span className="text-xs text-slate-400">
+                          {new Date(displayItem.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <h2 className="text-lg font-bold text-slate-900 font-serif mt-1">
+                        {displayItem.paperTitle}
+                      </h2>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => handleExportSummaryPdf(displayItem)}
+                        className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold shadow-2xs transition-colors"
+                      >
+                        <Download className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Export PDF</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleExportSummaryTxt(displayItem)}
+                        className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold shadow-2xs transition-colors"
+                      >
+                        <span>TXT</span>
+                      </button>
+
+                      <button
+                        onClick={() => deleteSummary(displayItem.id)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                        title="Delete Summary"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 5 Core Academic Sections */}
+                  <div className="p-6 space-y-6">
+                    {/* 1. Objectives */}
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-2 text-xs font-bold text-blue-900 uppercase tracking-wide">
+                        <Target className="w-4 h-4 text-blue-600" />
+                        <span>1. Research Objectives & Hypotheses</span>
+                      </div>
+                      <p className="text-sm text-slate-700 leading-relaxed bg-blue-50/30 p-4 rounded-xl border border-blue-100">
+                        {displayItem.objectives}
+                      </p>
+                    </div>
+
+                    {/* 2. Methodology */}
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-2 text-xs font-bold text-indigo-900 uppercase tracking-wide">
+                        <FlaskConical className="w-4 h-4 text-indigo-600" />
+                        <span>2. Research Methodology & Setup</span>
+                      </div>
+                      <p className="text-sm text-slate-700 leading-relaxed bg-indigo-50/30 p-4 rounded-xl border border-indigo-100">
+                        {displayItem.methodology}
+                      </p>
+                    </div>
+
+                    {/* 3. Key Findings */}
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-2 text-xs font-bold text-emerald-900 uppercase tracking-wide">
+                        <Award className="w-4 h-4 text-emerald-600" />
+                        <span>3. Key Findings & Empirical Results</span>
+                      </div>
+                      <p className="text-sm text-slate-700 leading-relaxed bg-emerald-50/30 p-4 rounded-xl border border-emerald-100">
+                        {displayItem.keyFindings}
+                      </p>
+                    </div>
+
+                    {/* 4. Limitations */}
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-2 text-xs font-bold text-amber-900 uppercase tracking-wide">
+                        <AlertTriangle className="w-4 h-4 text-amber-600" />
+                        <span>4. Limitations & Methodological Constraints</span>
+                      </div>
+                      <p className="text-sm text-slate-700 leading-relaxed bg-amber-50/30 p-4 rounded-xl border border-amber-100">
+                        {displayItem.limitations}
+                      </p>
+                    </div>
+
+                    {/* 5. Conclusions */}
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-2 text-xs font-bold text-purple-900 uppercase tracking-wide">
+                        <Lightbulb className="w-4 h-4 text-purple-600" />
+                        <span>5. Conclusions & Scientific Impact</span>
+                      </div>
+                      <p className="text-sm text-slate-700 leading-relaxed bg-purple-50/30 p-4 rounded-xl border border-purple-100">
+                        {displayItem.conclusions}
+                      </p>
+                    </div>
+
+                    {/* Full Summary Text */}
+                    {displayItem.fullSummaryText && (
+                      <div className="space-y-2 pt-4 border-t border-slate-100">
+                        <div className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                          Comprehensive Academic Synthesis
+                        </div>
+                        <div className="text-sm text-slate-700 leading-relaxed font-serif bg-slate-50 p-5 rounded-xl border border-slate-200">
+                          {displayItem.fullSummaryText}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()
+          ) : (
+            <div className="bg-slate-50 rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500">
+              Click &quot;Generate Structured Summary&quot; above to create a 5-dimension academic review of &quot;{selectedPaper?.title}&quot;.
+            </div>
+          )}
+        </>
+      )}
+
+      {/* DISPLAY ABSTRACT RESULT */}
+      {mode === 'abstract' && (
+        <>
+          {(activeAbstract || currentPaperAbstracts[0]) ? (
+            (() => {
+              const displayItem = activeAbstract || currentPaperAbstracts[0];
+              return (
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+                  <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/50">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200/50">
+                        Evidence-Grounded Abstract
+                      </span>
+                      <h2 className="text-lg font-bold text-slate-900 font-serif mt-1">
+                        {displayItem.paperTitle}
+                      </h2>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={() => handleExportAbstractPdf(displayItem)}
+                        className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold shadow-2xs transition-colors"
+                      >
+                        <Download className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Export PDF</span>
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          downloadAsText(
+                            `abstract_${displayItem.paperTitle.slice(0, 25)}.txt`,
+                            `# Abstract: ${displayItem.paperTitle}\n\n${displayItem.generatedAbstract}\n\nKeywords: ${displayItem.keywords}`
+                          )
+                        }
+                        className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold shadow-2xs transition-colors"
+                      >
+                        <span>TXT</span>
+                      </button>
+
+                      <button
+                        onClick={() => deleteAbstract(displayItem.id)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="p-6 space-y-6">
+                    <div>
+                      <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                        Abstract (Strictly Grounded in Uploaded Content)
+                      </div>
+                      <div className="text-sm font-serif text-slate-800 leading-relaxed bg-blue-50/20 p-5 rounded-xl border border-blue-100">
+                        {displayItem.generatedAbstract}
+                      </div>
+                    </div>
+
+                    {displayItem.keywords && (
+                      <div>
+                        <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                          Academic Keywords
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {displayItem.keywords.split(',').map((kw, i) => (
+                            <span
+                              key={i}
+                              className="text-xs font-medium bg-slate-100 text-slate-700 px-3 py-1 rounded-lg border border-slate-200"
+                            >
+                              {kw.trim()}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()
+          ) : (
+            <div className="bg-slate-50 rounded-2xl border border-slate-200 p-8 text-center text-xs text-slate-500">
+              Click &quot;Generate Academic Abstract&quot; above to synthesize a 150-250 word formal abstract for &quot;{selectedPaper?.title}&quot;.
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+};

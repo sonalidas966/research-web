@@ -1,0 +1,118 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId);
+      allow list: if false;
+      allow create: if isSignedIn() && request.auth.uid == userId && isValidId(userId) &&
+                    incoming().id == userId &&
+                    incoming().email is string && incoming().email.size() <= 200;
+      allow update: if isSignedIn() && request.auth.uid == userId && isValidId(userId) &&
+                    incoming().id == userId &&
+                    incoming().email == existing().email;
+      allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId);
+    }
+
+    // Papers Collection
+    match /papers/{paperId} {
+      allow get: if isSignedIn() && isValidId(paperId) && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(paperId) &&
+                    incoming().userId == request.auth.uid &&
+                    incoming().title is string && incoming().title.size() <= 500 &&
+                    incoming().fileName is string && incoming().fileName.size() <= 255;
+      allow update: if isSignedIn() && isValidId(paperId) &&
+                    resource.data.userId == request.auth.uid &&
+                    incoming().userId == resource.data.userId;
+      allow delete: if isSignedIn() && isValidId(paperId) && resource.data.userId == request.auth.uid;
+    }
+
+    // Summaries Collection
+    match /summaries/{summaryId} {
+      allow get: if isSignedIn() && isValidId(summaryId) && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(summaryId) &&
+                    incoming().userId == request.auth.uid &&
+                    incoming().paperTitle is string;
+      allow update: if isSignedIn() && isValidId(summaryId) &&
+                    resource.data.userId == request.auth.uid &&
+                    incoming().userId == resource.data.userId;
+      allow delete: if isSignedIn() && isValidId(summaryId) && resource.data.userId == request.auth.uid;
+    }
+
+    // Abstracts Collection
+    match /abstracts/{abstractId} {
+      allow get: if isSignedIn() && isValidId(abstractId) && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(abstractId) &&
+                    incoming().userId == request.auth.uid &&
+                    incoming().paperTitle is string;
+      allow update: if isSignedIn() && isValidId(abstractId) &&
+                    resource.data.userId == request.auth.uid &&
+                    incoming().userId == resource.data.userId;
+      allow delete: if isSignedIn() && isValidId(abstractId) && resource.data.userId == request.auth.uid;
+    }
+
+    // Literature Reviews Collection
+    match /literatureReviews/{reviewId} {
+      allow get: if isSignedIn() && isValidId(reviewId) && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(reviewId) &&
+                    incoming().userId == request.auth.uid &&
+                    incoming().reviewTitle is string;
+      allow update: if isSignedIn() && isValidId(reviewId) &&
+                    resource.data.userId == request.auth.uid &&
+                    incoming().userId == resource.data.userId;
+      allow delete: if isSignedIn() && isValidId(reviewId) && resource.data.userId == request.auth.uid;
+    }
+
+    // Research Gaps Collection
+    match /researchGaps/{gapId} {
+      allow get: if isSignedIn() && isValidId(gapId) && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(gapId) &&
+                    incoming().userId == request.auth.uid &&
+                    incoming().topic is string;
+      allow update: if isSignedIn() && isValidId(gapId) &&
+                    resource.data.userId == request.auth.uid &&
+                    incoming().userId == resource.data.userId;
+      allow delete: if isSignedIn() && isValidId(gapId) && resource.data.userId == request.auth.uid;
+    }
+
+    // Chat Sessions Collection
+    match /chatSessions/{chatId} {
+      allow get: if isSignedIn() && isValidId(chatId) && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(chatId) &&
+                    incoming().userId == request.auth.uid &&
+                    incoming().messagesJson is string;
+      allow update: if isSignedIn() && isValidId(chatId) &&
+                    resource.data.userId == request.auth.uid &&
+                    incoming().userId == resource.data.userId;
+      allow delete: if isSignedIn() && isValidId(chatId) && resource.data.userId == request.auth.uid;
+    }
+  }
+}

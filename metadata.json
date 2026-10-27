@@ -1,0 +1,6 @@
+{
+  "name": "Aura Research",
+  "description": "Your Personal Research Guide — AI-powered literature review, paper summarization, research gap finder, and evidence-grounded academic assistant.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
